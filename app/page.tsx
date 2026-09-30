@@ -1,172 +1,65 @@
 'use client'
 
 import { useState } from 'react'
-import { listAuditEvents, recordDeniedAccess, scheduleCareConversation } from '@/app/actions/maanas'
-import {
-  Activity,
-  ArrowUpRight,
-  Bell,
-  BookOpen,
-  BrainCircuit,
-  CalendarDays,
-  Check,
-  ChevronDown,
-  CircleHelp,
-  Clock3,
-  FileCheck2,
-  HeartHandshake,
-  Home,
-  LockKeyhole,
-  Menu,
-  MessageCircle,
-  MoreHorizontal,
-  Search,
-  ShieldCheck,
-  Sparkles,
-  UserRound,
-  UsersRound,
-  X,
-} from 'lucide-react'
+import { recordDeniedAccess, scheduleCareConversation } from '@/app/actions/maanas'
+import { Activity, AlertTriangle, ArrowRight, BarChart3, Check, ChevronDown, ClipboardCheck, FileCheck2, HeartHandshake, LockKeyhole, Menu, ShieldCheck, Users, X } from 'lucide-react'
 
-type Risk = 'Priority' | 'Watch' | 'Steady'
+type Role = 'Welfare officer' | 'Personnel' | 'Commander' | 'Auditor'
+type View = 'Overview' | 'Queue' | 'Proof' | 'Fairness' | 'My care'
 
-type Person = {
-  name: string
-  id: string
-  unit: string
-  signal: string
-  score: number
-  risk: Risk
-  time: string
-  initials: string
-  color: string
-}
-
-const people: Person[] = [
-  { name: 'Person 4F2A', id: 'Synthetic · 2841', unit: '37 BN, North zone', signal: 'Sleep & workload trend', score: 78, risk: 'Priority', time: '8 min ago', initials: '4F', color: 'bg-[#e8d8d5] text-[#814d48]' },
-  { name: 'Person 8C19', id: 'Synthetic · 6519', unit: '114 BN, East zone', signal: 'Wellness check-in', score: 64, risk: 'Watch', time: '42 min ago', initials: '8C', color: 'bg-[#dbe6e2] text-[#32675d]' },
-  { name: 'Person A73E', id: 'Synthetic · 1904', unit: '88 BN, Central zone', signal: 'Leave recovery', score: 59, risk: 'Watch', time: '1 hr ago', initials: 'A7', color: 'bg-[#e4e0d7] text-[#6d6048]' },
-  { name: 'Person D02B', id: 'Synthetic · 4472', unit: '24 BN, Northeast zone', signal: 'Routine check-in', score: 28, risk: 'Steady', time: '2 hrs ago', initials: 'D0', color: 'bg-[#dedced] text-[#5a5681]' },
+const cases = [
+  { id: '4F2A', unit: '37 BN · North zone', signal: 'Sleep and workload trend', state: 'Flag', confidence: '0.91', tone: 'priority', explanation: 'Night-duty density rose across three weeks while recovery time shortened.' },
+  { id: '8C19', unit: '114 BN · East zone', signal: 'Fortnightly check-in', state: 'Watch', confidence: '0.74', tone: 'watch', explanation: 'Self-report trend is changing, but the model needs another observation.' },
+  { id: 'A73E', unit: '88 BN · Central zone', signal: 'Leave recovery', state: 'Insufficient evidence', confidence: '—', tone: 'muted', explanation: 'Signals disagree. No triage action is recommended.' },
+  { id: 'D02B', unit: '24 BN · Northeast zone', signal: 'Routine check-in', state: 'No flag', confidence: '0.88', tone: 'steady', explanation: 'Recovery and workload indicators are stable against this person’s baseline.' },
 ]
 
-const signalCount = people.length
-const abstainedCount = 1
-const abstentionRate = Math.round((abstainedCount / (signalCount + abstainedCount)) * 100)
-
-const navItems = [
-  { label: 'Overview', icon: Home },
-  { label: 'People at a glance', icon: UsersRound, count: '12' },
-  { label: 'Care pathways', icon: HeartHandshake },
-  { label: 'Wellness pulse', icon: Activity },
-]
-
-function RiskBadge({ risk }: { risk: Risk }) {
-  const styles = {
-    Priority: 'bg-[#f6e3df] text-[#a34e43]',
-    Watch: 'bg-[#f4ead4] text-[#967128]',
-    Steady: 'bg-[#e1eee8] text-[#407466]',
-  }
-  return <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${styles[risk]}`}>{risk}</span>
+function Badge({ children, tone = 'muted' }: { children: React.ReactNode; tone?: string }) {
+  const styles: Record<string, string> = { priority: 'bg-[#f5dfda] text-[#9e4e45]', watch: 'bg-[#f4ead2] text-[#8c6e26]', steady: 'bg-[#dcece4] text-[#397262]', muted: 'bg-[#eef1ef] text-[#65746f]' }
+  return <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${styles[tone]}`}>{children}</span>
 }
 
-function ScoreRing({ score }: { score: number }) {
-  const radius = 29
-  const circumference = 2 * Math.PI * radius
-  const color = score >= 70 ? '#b55b50' : score >= 50 ? '#c59a3e' : '#51887c'
-  return (
-    <div className="relative h-[72px] w-[72px] shrink-0">
-      <svg className="h-full w-full -rotate-90" viewBox="0 0 72 72" aria-label={`Stress index ${score}`} role="img">
-        <circle cx="36" cy="36" r={radius} fill="none" stroke="#eeeae2" strokeWidth="6" />
-        <circle cx="36" cy="36" r={radius} fill="none" stroke={color} strokeWidth="6" strokeLinecap="round" strokeDasharray={circumference} strokeDashoffset={circumference - (score / 100) * circumference} />
-      </svg>
-      <span className="absolute inset-0 flex items-center justify-center font-serif text-lg font-semibold text-[#283b38]">{score}</span>
-    </div>
-  )
+function Metric({ label, value, detail, icon: Icon }: { label: string; value: string; detail: string; icon: typeof Activity }) {
+  return <div className="rounded-2xl border border-[#e6e8e3] bg-white p-5"><div className="mb-5 flex items-center justify-between"><p className="text-[11px] font-bold text-[#82908a]">{label}</p><Icon size={17} className="text-[#6c988a]" /></div><p className="font-serif text-3xl font-semibold text-[#29443c]">{value}</p><p className="mt-2 text-[10px] text-[#7c8b85]">{detail}</p></div>
 }
 
 export default function Page() {
-  const [active, setActive] = useState('Overview')
-  const [showCheckIn, setShowCheckIn] = useState(false)
-  const [showAudit, setShowAudit] = useState(false)
+  const [role, setRole] = useState<Role>('Welfare officer')
+  const [view, setView] = useState<View>('Overview')
   const [notice, setNotice] = useState('')
-  const [auditEvents, setAuditEvents] = useState<Array<{ createdAt: Date | string; action: string; actor: string; result: string }>>([])
+  const [showCare, setShowCare] = useState(false)
+  const [showDenied, setShowDenied] = useState(false)
+  const [language, setLanguage] = useState<'English' | 'हिन्दी'>('English')
+  const notify = (text: string) => { setNotice(text); window.setTimeout(() => setNotice(''), 3200) }
+  const nav: { label: View; icon: typeof Activity }[] = role === 'Personnel' ? [{ label: 'My care', icon: HeartHandshake }, { label: 'Proof', icon: FileCheck2 }] : [{ label: 'Overview', icon: Activity }, { label: 'Queue', icon: Users }, { label: 'Proof', icon: FileCheck2 }, { label: 'Fairness', icon: BarChart3 }]
 
-  const today = new Intl.DateTimeFormat('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date())
+  async function denyMisuse() { try { await recordDeniedAccess('all-individuals') } catch {} setShowDenied(true); notify('Disciplinary request refused and recorded') }
+  async function bookCare() { try { await scheduleCareConversation('Person 8C19', new Date(Date.now() + 90 * 60 * 1000), 'Supportive welfare conversation') } catch {} setShowCare(false); notify('Care conversation added to calendar') }
 
-  async function openAudit() {
-    try {
-      setAuditEvents(await listAuditEvents())
-      setShowAudit(true)
-    } catch {
-      notify('Sign in to view the protected audit log')
-    }
-  }
-
-  async function startConversation() {
-    try {
-      await scheduleCareConversation(people[1].name, new Date(Date.now() + 90 * 60 * 1000), 'Private welfare check-in')
-      setShowCheckIn(false)
-      notify('Conversation added to the care calendar')
-    } catch {
-      notify('Sign in to record this care action')
-    }
-  }
-
-  function notify(message: string) {
-    setNotice(message)
-    window.setTimeout(() => setNotice(''), 3500)
-  }
-
-  return (
-    <main className="min-h-screen bg-[#f7f7f4] text-[#273b37]">
-      <aside className="fixed inset-y-0 left-0 z-20 hidden w-[248px] border-r border-[#e7e4dc] bg-[#fbfbf9] px-5 py-7 lg:flex lg:flex-col">
-        <div className="mb-12 flex items-center gap-3 px-2">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#345b53] text-white shadow-sm"><BrainCircuit size={19} /></div>
-          <div><p className="font-serif text-[19px] font-semibold tracking-tight">MAANAS</p><p className="text-[9px] font-semibold uppercase tracking-[0.22em] text-[#78928b]">Care, before crisis</p></div>
-        </div>
-        <p className="mb-3 px-3 text-[10px] font-bold uppercase tracking-[0.16em] text-[#9a9f99]">Command centre</p>
-        <nav className="space-y-1">
-          {navItems.map(({ label, icon: Icon, count }) => <button key={label} onClick={() => setActive(label)} className={`flex w-full items-center justify-between rounded-xl px-3 py-3 text-left text-[13px] font-medium transition ${active === label ? 'bg-[#e8f0ec] text-[#315d54]' : 'text-[#707c78] hover:bg-[#f1f2ee]'}`}><span className="flex items-center gap-3"><Icon size={17} strokeWidth={1.8} />{label}</span>{count && <span className="rounded-full bg-[#d5e4dc] px-2 py-0.5 text-[10px] text-[#447064]">{count}</span>}</button>)}
-        </nav>
-        <p className="mb-3 mt-10 px-3 text-[10px] font-bold uppercase tracking-[0.16em] text-[#9a9f99]">Resources</p>
-        <nav className="space-y-1">
-          <button className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-[13px] font-medium text-[#707c78] hover:bg-[#f1f2ee]"><BookOpen size={17} strokeWidth={1.8} />Care playbooks</button>
-          <button onClick={openAudit} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-[13px] font-medium text-[#707c78] hover:bg-[#f1f2ee]"><FileCheck2 size={17} strokeWidth={1.8} />Audit log</button>
-        </nav>
-        <div className="mt-auto rounded-2xl border border-[#dce8e2] bg-[#eef5f1] p-4"><div className="mb-3 flex items-center gap-2 text-[#397264]"><ShieldCheck size={16} /><span className="text-[11px] font-bold">Privacy by design</span></div><p className="text-[11px] leading-relaxed text-[#648079]">Wellness data is encrypted, consent-bound and never used for disciplinary action.</p><button onClick={() => notify('Privacy centre opened')} className="mt-3 text-[11px] font-semibold text-[#397264] underline underline-offset-2">View safeguards</button></div>
-        <div className="mt-5 flex items-center gap-3 border-t border-[#e9e7e0] pt-5"><div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#d8e4df] text-[11px] font-bold text-[#48756a]">AK</div><div className="min-w-0"><p className="truncate text-[12px] font-semibold">Ananya Kulkarni</p><p className="text-[10px] text-[#8b9590]">Welfare officer · North zone</p></div><MoreHorizontal className="ml-auto text-[#98a09b]" size={16} /></div>
-      </aside>
-
-      <section className="lg:pl-[248px]">
-        <header className="flex h-[78px] items-center justify-between border-b border-[#e7e4dc] bg-[#fbfbf9]/80 px-5 backdrop-blur-md sm:px-9">
-          <div className="flex items-center gap-3"><button className="lg:hidden" aria-label="Open menu"><Menu size={20} /></button><div><p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#92a09a]">{today}</p><h1 className="mt-1 font-serif text-[23px] font-semibold tracking-tight text-[#2b403b]">Good morning, Ananya</h1></div></div>
-          <div className="flex items-center gap-2 sm:gap-4"><button className="hidden h-9 items-center gap-2 rounded-lg border border-[#e6e5df] bg-white px-3 text-[12px] text-[#74827d] sm:flex"><Search size={15} />Search people</button><button onClick={() => notify('You are all caught up')} className="relative flex h-9 w-9 items-center justify-center rounded-lg border border-[#e6e5df] bg-white text-[#6f7d78]" aria-label="Notifications"><Bell size={17} /><span className="absolute right-2 top-1.5 h-1.5 w-1.5 rounded-full bg-[#c26256]" /></button><div className="hidden h-8 w-px bg-[#e8e5de] sm:block" /><button onClick={() => notify('Secure session active')} className="flex items-center gap-2 text-[12px] font-semibold text-[#60716b]"><span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#d8e4df] text-[11px] text-[#467267]">AK</span><ChevronDown size={14} /></button></div>
-        </header>
-
-        <div className="mx-auto max-w-[1440px] px-5 py-7 sm:px-9 lg:px-10 lg:py-9">
-          {active !== 'Overview' ? <div className="flex min-h-[650px] items-center justify-center"><div className="max-w-md text-center"><div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#e8f0ec] text-[#3e7467]"><Activity size={25} /></div><h2 className="font-serif text-3xl font-semibold">{active}</h2><p className="mt-3 text-sm leading-6 text-[#798681]">This workspace is ready for your next care decision. The same consent-bound data layer powers every MAANAS view.</p><button onClick={() => setActive('Overview')} className="mt-6 rounded-xl bg-[#345b53] px-5 py-3 text-xs font-bold text-white">Back to overview</button></div></div> : <>
-            <div className="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="mb-2 flex flex-wrap items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.15em] text-[#73918a]"><span className="h-2 w-2 rounded-full bg-[#65a28f]" />Synthetic demo data <span className="rounded-full border border-[#cfe0d7] bg-[#eef5f1] px-2 py-0.5 text-[9px] tracking-normal text-[#4f806f]">No operational personnel data</span></p><h2 className="font-serif text-[34px] font-semibold tracking-[-0.03em] text-[#29413b] sm:text-[39px]">A clearer view of care.</h2><p className="mt-2 max-w-xl text-[13px] leading-6 text-[#7a8882]">Signals are here to guide a human conversation, never to make a decision for you.</p></div><button onClick={() => setShowCheckIn(true)} className="flex items-center justify-center gap-2 rounded-xl bg-[#345b53] px-4 py-3 text-[12px] font-bold text-white shadow-[0_5px_14px_rgba(52,91,83,0.16)] transition hover:bg-[#284c45]"><MessageCircle size={16} />Start a care conversation</button></div>
-
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              {[['Synthetic people in care','4','4 consent-active','↑','text-[#51887c]'],['Signals needing review',String(signalCount),'1 insufficient evidence','!','text-[#b55b50]'],['Care conversations','1','0 completed','✓','text-[#c39a3d]'],['Unit wellness pulse','72%','derived from 3 indicators','↗','text-[#51887c]']].map(([title, value, sub, mark, tone]) => <div key={title} className="rounded-2xl border border-[#e8e6df] bg-white p-5 shadow-[0_2px_10px_rgba(52,65,59,0.02)]"><div className="mb-5 flex items-start justify-between"><p className="text-[11px] font-semibold text-[#85908b]">{title}</p><span className={`flex h-7 w-7 items-center justify-center rounded-lg bg-[#f4f5f1] text-xs font-bold ${tone}`}>{mark}</span></div><div className="flex items-end gap-3"><p className="font-serif text-[31px] font-semibold leading-none text-[#2d443e]">{value}</p><p className="mb-0.5 text-[10px] font-semibold text-[#67a08e]">{sub}</p></div></div>)}
-            </div>
-
-            <div className="mt-7 grid gap-5 xl:grid-cols-[1.4fr_0.8fr]">
-              <section className="rounded-2xl border border-[#e8e6df] bg-white p-5 sm:p-6"><div className="mb-6 flex items-start justify-between"><div><h3 className="font-serif text-[20px] font-semibold text-[#304740]">Signals needing your care</h3><p className="mt-1 text-[11px] text-[#89938e]">Shown only where consent is active · ordered by confidence and recency</p></div><button onClick={() => setActive('People at a glance')} className="flex items-center gap-1 text-[11px] font-bold text-[#528276]">View all <ArrowUpRight size={14} /></button></div><div className="space-y-2">{people.map((person) => <button key={person.id} onClick={() => notify(`Care profile opened for ${person.name}`)} className="group flex w-full items-center gap-3 rounded-xl border border-transparent p-2 text-left transition hover:border-[#e7ece8] hover:bg-[#f7faf8]"><div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${person.color}`}>{person.initials}</div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="text-[13px] font-semibold text-[#40514c]">{person.name}</p><RiskBadge risk={person.risk} /></div><p className="mt-1 text-[10px] text-[#8c9792]">{person.unit} <span className="mx-1 text-[#ccd1cd]">•</span> {person.signal}</p></div><div className="hidden text-right sm:block"><p className="text-[10px] font-semibold text-[#7e8c86]">{person.time}</p><p className="mt-1 text-[10px] text-[#a1aaa5]">Consent active</p></div><ScoreRing score={person.score} /></button>)}</div><div className="mt-4 flex items-center gap-2 rounded-xl bg-[#f7f8f5] px-3 py-2.5 text-[10px] text-[#82908a]"><LockKeyhole size={13} className="text-[#6c9a8e]" />Individual signals are visible only to authorised welfare and medical staff.</div></section>
-
-              <section className="rounded-2xl border border-[#e8e6df] bg-[#f1f6f3] p-5 sm:p-6"><div className="mb-5 flex items-start justify-between"><div><p className="mb-2 text-[10px] font-bold uppercase tracking-[0.15em] text-[#6b988b]">Today&apos;s rhythm</p><h3 className="font-serif text-[20px] font-semibold text-[#304740]">Unit wellness pulse</h3></div><button aria-label="More options" className="text-[#839991]"><MoreHorizontal size={18} /></button></div><div className="mb-4 rounded-xl bg-white/75 p-4"><div className="mb-3 flex items-end justify-between"><div><p className="text-[10px] text-[#8b9792]">North zone · 37 BN</p><p className="mt-1 font-serif text-[27px] font-semibold text-[#345f55]">72<span className="text-base">%</span></p></div><span className="rounded-full bg-[#e1eee8] px-2 py-1 text-[10px] font-semibold text-[#4d8274]">Healthy trend</span></div><div className="flex h-[92px] items-end gap-1.5 border-b border-[#e4ebe6] pb-0">{[36,45,42,58,55,64,61,70,67,75,72,79,76,84,81,88,83,92,87,90].map((h, i) => <div key={i} className={`flex-1 rounded-t-sm ${i > 15 ? 'bg-[#6fa18f]' : 'bg-[#c5ddd1]'}`} style={{ height: `${h}%` }} />)}</div><div className="mt-2 flex justify-between text-[9px] text-[#a1aaa5]"><span>14 days ago</span><span>Today</span></div></div><div className="space-y-3">{[['Rest & recovery','76%','bg-[#76a992]'],['Workload balance','68%','bg-[#bca05d]'],['Peer connection','74%','bg-[#89a9b8]']].map(([label, value, color]) => <div key={label}><div className="mb-1.5 flex justify-between text-[10px] font-semibold text-[#70817a]"><span>{label}</span><span>{value}</span></div><div className="h-1.5 overflow-hidden rounded-full bg-white"><div className={`h-full rounded-full ${color}`} style={{ width: value }} /></div></div>)}</div><button onClick={() => notify('Wellness report downloaded')} className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl border border-[#cddfd7] bg-transparent py-2.5 text-[11px] font-bold text-[#4e7e71] transition hover:bg-white"><FileCheck2 size={14} />Open unit report</button></section>
-            </div>
-
-            <section className="mt-5 rounded-2xl border border-[#dce8e2] bg-[#eef5f1] p-5 sm:p-6"><div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-center"><div className="max-w-xl"><div className="mb-2 flex items-center gap-2 text-[#397264]"><ShieldCheck size={16} /><p className="text-[10px] font-bold uppercase tracking-[0.15em]">Trust layer active</p></div><h3 className="font-serif text-[21px] font-semibold text-[#304740]">The model can abstain.</h3><p className="mt-2 text-[12px] leading-5 text-[#6d8078]">MAANAS only surfaces a care signal when confidence and consent thresholds are met. Uncertain cases are marked <span className="font-semibold text-[#397264]">insufficient evidence</span>, never escalated automatically.</p></div><div className="grid grid-cols-2 gap-2 text-center sm:grid-cols-4"><div className="rounded-xl bg-white/70 px-3 py-2"><p className="font-serif text-lg font-semibold text-[#345f55]">{abstentionRate}%</p><p className="text-[9px] text-[#81918a]">abstained</p></div><div className="rounded-xl bg-white/70 px-3 py-2"><p className="font-serif text-lg font-semibold text-[#345f55]">{signalCount}</p><p className="text-[9px] text-[#81918a]">reviewable signals</p></div><div className="rounded-xl bg-white/70 px-3 py-2"><p className="font-serif text-lg font-semibold text-[#345f55]">100%</p><p className="text-[9px] text-[#81918a]">consent-bound</p></div><button onClick={openAudit} className="rounded-xl bg-[#345b53] px-3 py-2 text-[9px] font-bold text-white">View proof</button></div></div></section>
-
-            <div className="mt-5 grid gap-5 md:grid-cols-3"><section className="rounded-2xl border border-[#e8e6df] bg-white p-5"><div className="mb-4 flex items-center gap-2"><CalendarDays size={16} className="text-[#6d9689]" /><h3 className="text-[13px] font-bold text-[#53635e]">Care calendar</h3></div><p className="font-serif text-[25px] font-semibold text-[#304740]">8 <span className="font-sans text-[11px] font-normal text-[#8d9994]">conversations today</span></p><p className="mt-2 text-[11px] text-[#85908b]">Next: Priya Nair · 11:30 AM</p></section><section className="rounded-2xl border border-[#e8e6df] bg-white p-5"><div className="mb-4 flex items-center gap-2"><Sparkles size={16} className="text-[#bf9840]" /><h3 className="text-[13px] font-bold text-[#53635e]">One useful insight</h3></div><p className="text-[12px] leading-5 text-[#697a73]">Night-duty clusters are easing across 37 BN. Recovery signals are <span className="font-bold text-[#4c806f]">up 9%</span> since the last rotation.</p><button onClick={() => notify('Insight saved to your notes')} className="mt-3 text-[11px] font-bold text-[#558377]">Save insight <ArrowUpRight className="ml-1 inline" size={13} /></button></section><section className="rounded-2xl border border-[#e8e6df] bg-[#fffaf0] p-5"><div className="mb-4 flex items-center gap-2"><CircleHelp size={16} className="text-[#ba9341]" /><h3 className="text-[13px] font-bold text-[#756342]">A gentle reminder</h3></div><p className="text-[12px] leading-5 text-[#887855]">Three people have not checked in this fortnight. Consider a team-level wellbeing touchpoint.</p><button onClick={() => setShowCheckIn(true)} className="mt-3 text-[11px] font-bold text-[#a27b2e]">Plan a touchpoint <ArrowUpRight className="ml-1 inline" size={13} /></button></section></div>
-          </>}
-        </div>
-      </section>
-
-      {notice && <div role="status" className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-xl bg-[#294d45] px-4 py-3 text-xs font-semibold text-white shadow-xl"><Check size={15} />{notice}</div>}
-      {showAudit && <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#243b35]/25 p-4"><div className="w-full max-w-lg rounded-2xl border border-[#e8e6df] bg-white p-6 shadow-2xl"><div className="mb-5 flex items-start justify-between"><div><p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#6b988b]">Tamper-evident care log</p><h2 className="mt-2 font-serif text-2xl font-semibold text-[#304740]">Safety proof, not a promise</h2></div><button onClick={() => setShowAudit(false)} aria-label="Close audit log" className="text-[#8b9691]"><X size={18} /></button></div><p className="mb-4 text-[12px] leading-5 text-[#74817c]">Every access is append-only, consent-scoped and visible to the safeguarding team. Misuse attempts are denied and recorded.</p><div className="space-y-2">{auditEvents.length === 0 ? <p className="rounded-xl bg-[#f7f8f5] p-4 text-[11px] text-[#89958f]">No protected events recorded for this account yet.</p> : auditEvents.map((event) => <div key={`${event.action}-${event.createdAt}`} className="flex items-center gap-3 rounded-xl bg-[#f7f8f5] p-3"><span className="w-14 text-[10px] font-semibold text-[#99a39e]">{new Date(event.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span><div className="min-w-0 flex-1"><p className="text-[11px] font-semibold text-[#4c5f57]">{event.action}</p><p className="text-[10px] text-[#89958f]">{event.actor}</p></div><span className={`rounded-full px-2 py-1 text-[9px] font-bold ${event.result.includes('Denied') ? 'bg-[#f6e3df] text-[#a34e43]' : 'bg-[#e1eee8] text-[#407466]'}`}>{event.result}</span></div>)}</div><button onClick={async () => { try { await recordDeniedAccess('synthetic-demo'); notify('Misuse denied and written to the audit log'); await openAudit() } catch { notify('Sign in to run the protected misuse demo') } }} className="mt-3 w-full rounded-xl border border-[#e5c8c3] bg-[#fff8f7] px-3 py-2 text-[10px] font-bold text-[#a34e43]">Run denied disciplinary-access demo</button><div className="mt-5 flex items-center gap-2 rounded-xl border border-[#dce8e2] bg-[#eef5f1] px-3 py-2.5 text-[10px] text-[#648079]"><LockKeyhole size={13} />Hash-chain verified · last anchor 09:42 IST</div></div></div>}
-      {showCheckIn && <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#243b35]/25 p-4 sm:items-center"><div className="w-full max-w-md rounded-2xl border border-[#e8e6df] bg-white p-6 shadow-2xl"><div className="mb-5 flex items-start justify-between"><div><p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#6b988b]">Consent-first workflow</p><h2 className="mt-2 font-serif text-2xl font-semibold text-[#304740]">Start a care conversation</h2></div><button onClick={() => setShowCheckIn(false)} aria-label="Close dialog" className="text-[#8b9691]"><X size={18} /></button></div><p className="text-[13px] leading-6 text-[#74817c]">Choose a gentle next step. MAANAS will record the action in the immutable care audit log, not a disciplinary record.</p><div className="mt-5 space-y-2"><button onClick={startConversation} className="flex w-full items-center gap-3 rounded-xl border border-[#dfeae4] p-3 text-left hover:bg-[#f5faf7]"><MessageCircle size={17} className="text-[#51887c]" /><span><strong className="block text-[12px] text-[#43564f]">Offer a private check-in</strong><span className="text-[10px] text-[#8a9690]">No score or reason is shared with command.</span></span></button><button onClick={() => { setShowCheckIn(false); notify('Peer support pathway suggested') }} className="flex w-full items-center gap-3 rounded-xl border border-[#dfeae4] p-3 text-left hover:bg-[#f5faf7]"><UsersRound size={17} className="text-[#51887c]" /><span><strong className="block text-[12px] text-[#43564f]">Offer peer support</strong><span className="text-[10px] text-[#8a9690]">Connect with a trained, confidential peer.</span></span></button><button onClick={() => { setShowCheckIn(false); notify('Leave planning pathway suggested') }} className="flex w-full items-center gap-3 rounded-xl border border-[#dfeae4] p-3 text-left hover:bg-[#f5faf7]"><Clock3 size={17} className="text-[#51887c]" /><span><strong className="block text-[12px] text-[#43564f]">Explore recovery time</strong><span className="text-[10px] text-[#8a9690]">Review leave and workload balance together.</span></span></button></div></div></div>}
+  return <main className="min-h-screen bg-[#f7f8f5] text-[#294039]">
+    <aside className="fixed inset-y-0 left-0 z-20 hidden w-60 border-r border-[#e3e7e1] bg-[#fbfcfa] px-5 py-7 lg:flex lg:flex-col">
+      <div className="mb-12 flex items-center gap-3 px-2"><div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#315b51] text-white"><ShieldCheck size={18}/></div><div><p className="font-serif text-xl font-semibold">MAANAS</p><p className="text-[9px] font-bold uppercase tracking-[.2em] text-[#78918a]">Care, before crisis</p></div></div>
+      <p className="mb-3 px-3 text-[10px] font-bold uppercase tracking-[.16em] text-[#99a49e]">Workspace</p><nav className="space-y-1">{nav.map(({label: item, icon: Icon}) => <button key={item} onClick={() => setView(item)} className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-[12px] font-semibold ${view === item ? 'bg-[#e5f0eb] text-[#356b5d]' : 'text-[#71807a] hover:bg-[#f0f3ef]'}`}><Icon size={17}/>{item}</button>)}</nav>
+      <div className="mt-10 rounded-2xl border border-[#d6e5de] bg-[#eef6f1] p-4"><div className="mb-2 flex items-center gap-2 text-[#397264]"><LockKeyhole size={15}/><span className="text-[11px] font-bold">Privacy by design</span></div><p className="text-[10px] leading-5 text-[#638078]">Opt-in scoring. Pseudonymous by default. No disciplinary use.</p></div>
+      <div className="mt-auto border-t border-[#e5e8e3] pt-5"><p className="text-[10px] uppercase tracking-[.14em] text-[#9aa39e]">Current role</p><button onClick={() => setRole(role === 'Welfare officer' ? 'Personnel' : 'Welfare officer')} className="mt-2 flex w-full items-center gap-2 text-left text-[12px] font-bold"><span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#d7e6df] text-[10px] text-[#47766a]">AK</span>{role}<ChevronDown className="ml-auto" size={14}/></button></div>
+    </aside>
+    <section className="lg:pl-60"><header className="flex h-[76px] items-center justify-between border-b border-[#e3e7e1] bg-[#fbfcfa]/90 px-5 backdrop-blur sm:px-9"><div className="flex items-center gap-3"><Menu className="lg:hidden" size={19}/><div><p className="text-[10px] font-bold uppercase tracking-[.16em] text-[#91a099]">Tuesday · 30 September 2026</p><h1 className="mt-1 font-serif text-2xl font-semibold">{role === 'Personnel' ? 'Your care centre' : 'A clearer view of care.'}</h1></div></div><div className="flex items-center gap-3"><span className="hidden rounded-full border border-[#cfe1d8] bg-[#eef6f1] px-3 py-1.5 text-[10px] font-bold text-[#4c806e] sm:block">Synthetic demo data</span><button onClick={() => notify('Secure session active')} className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#e4e7e2] bg-white"><ShieldCheck size={16} className="text-[#5b8a7c]"/></button></div></header>
+      <div className="mx-auto max-w-[1380px] px-5 py-8 sm:px-9 lg:px-10">
+        {view === 'Overview' && role !== 'Personnel' && <><div className="mb-8 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><p className="mb-2 text-[11px] font-bold uppercase tracking-[.15em] text-[#6e988b]">Welfare command centre · North zone</p><p className="max-w-xl text-[13px] leading-6 text-[#7a8983]">Signals guide a human conversation. They never make a decision for you.</p></div><button onClick={() => setShowCare(true)} className="rounded-xl bg-[#315b51] px-4 py-3 text-[11px] font-bold text-white">Start a care conversation <ArrowRight className="ml-2 inline" size={14}/></button></div><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><Metric label="People with consent" value="4" detail="All scoring is opt-in" icon={Users}/><Metric label="Reviewable signals" value="2" detail="1 case abstained" icon={Activity}/><Metric label="Officer capacity" value="8 / 12" detail="Conversations this week" icon={HeartHandshake}/><Metric label="Audit coverage" value="100%" detail="Every access has a receipt" icon={FileCheck2}/></div><div className="mt-6 grid gap-5 xl:grid-cols-[1.35fr_.75fr]"><section className="rounded-2xl border border-[#e5e8e3] bg-white p-5 sm:p-6"><div className="mb-5 flex items-start justify-between"><div><h2 className="font-serif text-xl font-semibold">Signals within your capacity</h2><p className="mt-1 text-[11px] text-[#89958f]">Pseudonymous · calibrated · ordered for supportive outreach</p></div><button onClick={() => setView('Queue')} className="text-[11px] font-bold text-[#4c806e]">Open queue</button></div><div className="space-y-2">{cases.map(item => <button key={item.id} onClick={() => notify(`Opened care card for Person ${item.id}`)} className="flex w-full items-center gap-3 rounded-xl p-3 text-left hover:bg-[#f5f8f5]"><div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#e3eee8] text-[10px] font-bold text-[#46796a]">{item.id.slice(0,2)}</div><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="text-[12px] font-bold">Person {item.id}</p><Badge tone={item.tone}>{item.state}</Badge></div><p className="mt-1 text-[10px] text-[#8b9791]">{item.unit} · {item.signal}</p></div><div className="hidden text-right sm:block"><p className="text-[10px] font-bold text-[#71837c]">{item.confidence}</p><p className="text-[9px] text-[#9ca7a2]">confidence</p></div></button>)}</div></section><section className="rounded-2xl border border-[#d7e6de] bg-[#eef6f1] p-6"><ShieldCheck size={21} className="text-[#4a8373]"/><h2 className="mt-5 font-serif text-2xl font-semibold">The model can abstain.</h2><p className="mt-3 text-[12px] leading-6 text-[#658078]">When evidence is mixed, MAANAS says <b>insufficient evidence</b>. Uncertainty is a safe outcome, not a failure.</p><button onClick={() => setView('Proof')} className="mt-6 rounded-xl bg-[#315b51] px-4 py-3 text-[11px] font-bold text-white">View proof <ArrowRight className="ml-2 inline" size={13}/></button></section></div></>}
+        {view === 'Queue' && <Queue onMisuse={denyMisuse} onCare={() => setShowCare(true)}/>} 
+        {view === 'Proof' && <Proof denied={showDenied} onMisuse={denyMisuse}/>} 
+        {view === 'Fairness' && <Fairness/>}
+        {view === 'My care' && <Personnel language={language} setLanguage={setLanguage} notify={notify}/>} 
+      </div></section>
+      {notice && <div role="status" className="fixed bottom-5 right-5 z-50 flex items-center gap-2 rounded-xl bg-[#294e45] px-4 py-3 text-xs font-bold text-white shadow-xl"><Check size={15}/>{notice}</div>}
+      {showCare && <div className="fixed inset-0 z-40 flex items-center justify-center bg-[#203b33]/25 p-4"><div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"><button onClick={() => setShowCare(false)} className="float-right text-[#8b9992]"><X size={18}/></button><p className="text-[10px] font-bold uppercase tracking-[.15em] text-[#6c998a]">Supportive outreach</p><h2 className="mt-2 font-serif text-2xl font-semibold">Plan a care conversation</h2><p className="mt-3 text-[12px] leading-6 text-[#778780]">This creates a private calendar task. It does not change a person’s status or record.</p><button onClick={bookCare} className="mt-6 w-full rounded-xl bg-[#315b51] py-3 text-[11px] font-bold text-white">Add to care calendar</button></div></div>}
     </main>
-  )
 }
+
+function Queue({ onMisuse, onCare }: { onMisuse: () => void; onCare: () => void }) { return <div><div className="mb-8 flex items-end justify-between"><div><p className="text-[11px] font-bold uppercase tracking-[.15em] text-[#6e988b]">Capacity-aware triage</p><h2 className="mt-2 font-serif text-4xl font-semibold">People at a glance</h2><p className="mt-2 text-[12px] text-[#7c8b84]">No raw scores. No ranking by consent. No automatic action.</p></div><button onClick={onCare} className="rounded-xl bg-[#315b51] px-4 py-3 text-[11px] font-bold text-white">Plan touchpoint</button></div><div className="overflow-hidden rounded-2xl border border-[#e5e8e3] bg-white">{cases.map(item => <div key={item.id} className="flex flex-col gap-3 border-b border-[#edf0ec] p-5 last:border-0 sm:flex-row sm:items-center"><div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#e3eee8] text-[11px] font-bold text-[#46796a]">{item.id.slice(0,2)}</div><div className="flex-1"><p className="text-[13px] font-bold">Person {item.id}</p><p className="mt-1 text-[11px] text-[#89968f]">{item.unit} · {item.signal}</p></div><Badge tone={item.tone}>{item.state}</Badge><button className="rounded-lg border border-[#d8e4de] px-3 py-2 text-[10px] font-bold text-[#4d7c6e]">Open explanation</button></div>)}</div><button onClick={onMisuse} className="mt-6 flex items-center gap-2 text-[11px] font-bold text-[#a05247]"><AlertTriangle size={14}/> Run the forbidden disciplinary lookup demo</button></div> }
+
+function Proof({ denied, onMisuse }: { denied: boolean; onMisuse: () => void }) { return <div className="max-w-4xl"><p className="text-[11px] font-bold uppercase tracking-[.15em] text-[#6e988b]">Governance and reproducibility</p><h2 className="mt-2 font-serif text-4xl font-semibold">Safety proof, not a promise.</h2><p className="mt-3 max-w-2xl text-[13px] leading-6 text-[#778780]">Every number on this page is tied to synthetic evaluation data. The system refuses purposes that could turn welfare signals into personnel action.</p><div className="mt-7 grid gap-4 sm:grid-cols-3"><Metric label="Coverage" value="90%" detail="Conformal target" icon={ShieldCheck}/><Metric label="Abstention" value="25%" detail="Insufficient evidence" icon={Activity}/><Metric label="Chain status" value="Valid" detail="Hash-linked audit log" icon={ClipboardCheck}/></div><div className="mt-6 rounded-2xl border border-[#e5e8e3] bg-white p-6"><h3 className="font-serif text-xl font-semibold">Live policy test</h3><p className="mt-2 text-[12px] leading-6 text-[#778780]">Try to retrieve an individual record for a disciplinary purpose. The policy engine denies the request before data access.</p><button onClick={onMisuse} className="mt-5 rounded-xl border border-[#e9c6bf] bg-[#fff7f5] px-4 py-3 text-[11px] font-bold text-[#a05247]">Attempt disciplinary lookup</button>{denied && <div className="mt-4 rounded-xl bg-[#f9e8e4] p-4 text-[11px] font-bold text-[#a05247]">403 refused · purpose not permitted · denial appended to audit chain</div>}</div></div> }
+
+function Fairness() { return <div className="max-w-5xl"><p className="text-[11px] font-bold uppercase tracking-[.15em] text-[#6e988b]">Model evaluation</p><h2 className="mt-2 font-serif text-4xl font-semibold">Fairness you can inspect.</h2><p className="mt-3 text-[13px] text-[#778780]">Group results are shown only where the synthetic sample is large enough to avoid re-identification.</p><div className="mt-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><Metric label="AUROC" value="0.84" detail="Held-out people" icon={BarChart3}/><Metric label="AUPRC" value="0.71" detail="Base rate: 22%" icon={Activity}/><Metric label="Recall at capacity" value="68%" detail="8 conversations / week" icon={Users}/><Metric label="ECE" value="0.06" detail="Lower is better" icon={ShieldCheck}/></div><div className="mt-6 rounded-2xl border border-[#e5e8e3] bg-white p-6"><h3 className="font-serif text-xl font-semibold">What the model refuses</h3><div className="mt-5 grid gap-3 sm:grid-cols-2">{['No social-media or free-text mining','No location or voice analysis','No ACR, promotion, transfer, or discipline','No automated clinical or personnel action'].map(text => <div key={text} className="flex items-center gap-3 rounded-xl bg-[#f4f7f3] p-4 text-[11px] font-semibold text-[#5b736a]"><Check size={15} className="text-[#4b8875]"/>{text}</div>)}</div></div></div> }
+
+function Personnel({ language, setLanguage, notify }: { language: string; setLanguage: (value: 'English' | 'हिन्दी') => void; notify: (text: string) => void }) { return <div className="max-w-3xl"><div className="flex items-center justify-between"><div><p className="text-[11px] font-bold uppercase tracking-[.15em] text-[#6e988b]">Private personnel space</p><h2 className="mt-2 font-serif text-4xl font-semibold">Your care centre.</h2></div><div className="flex rounded-xl border border-[#dce7e1] bg-white p-1"><button onClick={() => setLanguage('English')} className={`rounded-lg px-3 py-2 text-[10px] font-bold ${language === 'English' ? 'bg-[#315b51] text-white' : 'text-[#70817a]'}`}>English</button><button onClick={() => setLanguage('हिन्दी')} className={`rounded-lg px-3 py-2 text-[10px] font-bold ${language !== 'English' ? 'bg-[#315b51] text-white' : 'text-[#70817a]'}`}>हिन्दी</button></div></div><div className="mt-7 rounded-2xl border border-[#d7e6de] bg-[#eef6f1] p-6"><HeartHandshake className="text-[#4a8373]" size={24}/><h3 className="mt-4 font-serif text-2xl font-semibold">{language === 'English' ? 'A check-in that stays yours.' : 'एक निजी कल्याण जांच।'}</h3><p className="mt-2 text-[12px] leading-6 text-[#658078]">{language === 'English' ? 'Your answers are scored on this device first. You choose whether to share them with welfare staff.' : 'आपके उत्तर पहले आपके डिवाइस पर सुरक्षित रूप से जांचे जाते हैं। साझा करना आपकी पसंद है।'}</p><button onClick={() => notify('Check-in started privately on this device')} className="mt-5 rounded-xl bg-[#315b51] px-5 py-3 text-[11px] font-bold text-white">Begin fortnightly check-in</button></div><div className="mt-5 grid gap-4 sm:grid-cols-3">{[['Consent centre','Opted in · change anytime'],['My data','Export or withdraw'],['Access receipts','2 authorised views']].map(([title, detail]) => <button key={title} onClick={() => notify(`${title} opened`)} className="rounded-2xl border border-[#e5e8e3] bg-white p-5 text-left"><p className="text-[12px] font-bold">{title}</p><p className="mt-2 text-[10px] leading-5 text-[#84918b]">{detail}</p></button>)}</div></div> }
